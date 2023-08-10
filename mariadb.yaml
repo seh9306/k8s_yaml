@@ -1,0 +1,111 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mariadb-config
+  namespace: secaas
+data:
+  my.cnf: |-
+    [client]
+    default-character-set = utf8mb4
+
+    [mysql]
+    default-character-set = utf8mb4
+
+    [mysqld]
+    character-set-server           = utf8mb4
+    collation-server               = utf8mb4_unicode_ci
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mariadb-first
+  namespace: secaas
+  labels:
+    app.kubernetes.io/name: mariadb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mariadb
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mariadb
+    spec:
+      volumes:
+        - name: config
+          configMap:
+            name: mariadb-config
+            defaultMode: 420
+      containers:
+        - name: mariadb:11
+          image: mariadb:11.1.1-rc
+          ports:
+            - name: mariadb
+              containerPort: 3306
+              protocol: TCP
+          env:
+            - name: MARIADB_ROOT_PASSWORD
+              value: '1234'
+            - name: MARIADB_DATABASE
+              value: user
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+            - name: config
+              mountPath: /etc/my.cnf
+              subPath: my.cnf
+      restartPolicy: Always
+      dnsPolicy: ClusterFirst
+  volumeClaimTemplates:
+    - kind: PersistentVolumeClaim
+      apiVersion: v1
+      metadata:
+        name: data
+        labels:
+          app.kubernetes.io/name: mariadb
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+        storageClassName: hostpath
+        volumeMode: Filesystem
+  serviceName: mariadb
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mariadb-headless
+  namespace: secaas
+  labels:
+    app.kubernetes.io/name: mariadb
+spec:
+  ports:
+    - name: mariadb
+      protocol: TCP
+      port: 3306
+      targetPort: mariadb
+  selector:
+    app.kubernetes.io/name: mariadb
+  clusterIP: None
+  clusterIPs:
+    - None
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mariadb-nodeport
+  namespace: secaas
+spec:
+  ports:
+    - protocol: TCP
+      port: 3306
+      targetPort: 3306
+      nodePort: 30300
+  selector:
+    app.kubernetes.io/name: mariadb
+  type: NodePort
+
